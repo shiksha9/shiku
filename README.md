@@ -67,6 +67,26 @@ For credit / “udhaar” tracking, each **customer ledger** should have:
 
 Then **Display → Statements of Accounts → Outstandings → Receivables** should show rows. If that screen is empty in Tally, the XML export will be empty too.
 
+## Fix for “Import Data / All Masters” + XML ParseError
+
+If your script prints currencies (`CURRENCY`, `All Masters`) instead of ledgers, the XML request shape is wrong. Use **Export + Collection + List of Ledgers**, not `Export Data` + `List of Accounts`.
+
+If you get `ParseError: reference to invalid character number`, Tally returned illegal control characters. Strip them before parsing:
+
+```python
+import re
+INVALID = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+xml = INVALID.sub("", response.text)
+```
+
+Copy `parse_debtors_fixed.py` into your project, or run:
+
+```bat
+python scripts\04_sundry_debtors.py
+```
+
+Set `TALLY_COMPANY=GANESH MARKETING` in `.env` (exact spelling as in Tally).
+
 ## Common problems
 
 | Symptom | What to do |

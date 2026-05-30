@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -15,6 +16,17 @@ TALLY_HOST = os.getenv("TALLY_HOST", "localhost")
 TALLY_PORT = int(os.getenv("TALLY_PORT", "9000"))
 TALLY_COMPANY = os.getenv("TALLY_COMPANY", "").strip()
 TALLY_URL = f"http://{TALLY_HOST}:{TALLY_PORT}"
+
+# Tally sometimes embeds control chars that break ElementTree.
+_INVALID_XML_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def sanitize_xml(text: str) -> str:
+    return _INVALID_XML_CHARS.sub("", text)
+
+
+def parse_xml(text: str) -> ET.Element:
+    return ET.fromstring(sanitize_xml(text))
 
 
 def _company_block() -> str:
@@ -71,6 +83,35 @@ def export_report(report_name: str, extra_static: str = "") -> str:
     return post_xml(xml)
 
 
+def export_sundry_debtors_collection() -> str:
+    """Export only ledger accounts under the Sundry Debtors group."""
+    xml = f"""<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>Sundry Debtor Ledgers</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        {_company_block()}
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="Sundry Debtor Ledgers" ISMODIFY="No">
+            <TYPE>Ledger</TYPE>
+            <CHILDOF>Sundry Debtors</CHILDOF>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>"""
+    return post_xml(xml)
+
+
 def export_collection(collection_id: str) -> str:
     xml = f"""<ENVELOPE>
   <HEADER>
@@ -93,7 +134,7 @@ def export_collection(collection_id: str) -> str:
 
 def response_ok(xml_text: str) -> bool:
     try:
-        root = ET.fromstring(xml_text)
+        root = parse_xml(xml_text)
     except ET.ParseError:
         return "STATUS" not in xml_text or "<STATUS>1</STATUS>" in xml_text
     status = root.find(".//STATUS")
@@ -107,7 +148,7 @@ def response_ok(xml_text: str) -> bool:
 
 def print_response_hint(xml_text: str) -> None:
     try:
-        root = ET.fromstring(xml_text)
+        root = parse_xml(xml_text)
     except ET.ParseError:
         print(xml_text[:2000])
         return
